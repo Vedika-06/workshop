@@ -1,0 +1,214 @@
+const jwt = require("jsonwebtoken");
+const User = require("../models/user");
+const bcrypt = require("bcrypt");
+
+// Create User
+exports.createUser = async (req, res) => {
+    try {
+        const { name, email, password, mobileNumber, roleId } = req.body;
+
+        const existingUser = await User.findOne({ email });
+        if (existingUser) {
+            return res.status(400).json({
+                message: "User with this email already exists"
+            });
+        }
+
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        const newUser = await User.create({
+            name,
+            email,
+            password: hashedPassword,
+            mobileNumber,
+            role: roleId
+        });
+
+        await newUser.populate({
+            path: "role",
+            select: "name description"
+        });
+
+        res.status(201).json({
+            message: "User created successfully",
+            user: {
+                id: newUser._id,
+                name: newUser.name,
+                email: newUser.email,
+                mobileNumber: newUser.mobileNumber,
+                role: newUser.role
+            }
+        });
+    } catch (error) {
+        res.status(500).json({
+            message: "Internal server error",
+            error: error.message
+        });
+    }
+};
+
+// Login User
+exports.login = async (req, res) => {
+    try {
+        const { email, password } = req.body;
+
+        const existingUser = await User.findOne({ email }).populate({
+            path: "role",
+            select: "name description"
+        });
+
+        if (!existingUser) {
+            return res.status(400).json({
+                message: "Invalid email or password"
+            });
+        }
+
+        const isMatch = await bcrypt.compare(password, existingUser.password);
+
+        if (!isMatch) {
+            return res.status(400).json({
+                message: "Invalid email or password"
+            });
+        }
+
+        const token = jwt.sign(
+            { id: existingUser._id },
+            process.env.JWT_SECRET,
+            { expiresIn: "1h" }
+        );
+
+        res.status(200).json({
+            message: "Login successful",
+            token,
+            user: {
+                id: existingUser._id,
+                name: existingUser.name,
+                email: existingUser.email,
+                mobileNumber: existingUser.mobileNumber,
+                role: existingUser.role
+            }
+        });
+    } catch (error) {
+        res.status(500).json({
+            message: "Internal server error",
+            error: error.message
+        });
+    }
+};
+
+// Get All Users
+exports.getAllUsers = async (req, res) => {
+    try {
+        const users = await User.find()
+            .select("-password")
+            .populate({
+                path: "role",
+                select: "name description"
+            });
+
+        res.status(200).json({
+            message: "Users fetched successfully",
+            users
+        });
+    } catch (error) {
+        res.status(500).json({
+            message: "Error fetching users",
+            error: error.message
+        });
+    }
+};
+
+// Get User By ID
+exports.getUserById = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const user = await User.findById(id)
+            .select("-password")
+            .populate({
+                path: "role",
+                select: "name description"
+            });
+
+        if (!user) {
+            return res.status(404).json({
+                message: "User not found"
+            });
+        }
+
+        res.status(200).json({
+            message: "User fetched successfully",
+            user
+        });
+    } catch (error) {
+        res.status(500).json({
+            message: "Error fetching user",
+            error: error.message
+        });
+    }
+};
+
+// Update User
+exports.updateUser = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, email, mobileNumber, roleId } = req.body;
+
+        const updatedUser = await User.findByIdAndUpdate(
+            id,
+            {
+                name,
+                email,
+                mobileNumber,
+                role: roleId
+            },
+            { new: true, runValidators: true }
+        )
+            .select("-password")
+            .populate({
+                path: "role",
+                select: "name description"
+            });
+
+        if (!updatedUser) {
+            return res.status(404).json({
+                message: "User not found"
+            });
+        }
+
+        res.status(200).json({
+            message: "User updated successfully",
+            user: updatedUser
+        });
+    } catch (error) {
+        res.status(500).json({
+            message: "Error updating user",
+            error: error.message
+        });
+    }
+};
+
+// Delete User
+exports.deleteUser = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const deletedUser = await User.findByIdAndDelete(id);
+
+        if (!deletedUser) {
+            return res.status(404).json({
+                message: "User not found"
+            });
+        }
+
+        res.status(200).json({
+            message: "User deleted successfully",
+            user: deletedUser
+        });
+    } catch (error) {
+        res.status(500).json({
+            message: "Error deleting user",
+            error: error.message
+        });
+    }
+};
